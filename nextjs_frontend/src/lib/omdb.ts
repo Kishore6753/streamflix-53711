@@ -40,14 +40,39 @@ const OMDB_BASE = "https://www.omdbapi.com/";
 function getMockFromEnv(): OmdbMovie | null {
   const raw = process.env.NEXT_PUBLIC_OMDB_API_KEY;
   if (!raw) return null;
-  try {
-    // The request specifies this env contains sample Guardians Vol. 2 JSON as a string for demo
-    const parsed = JSON.parse(raw) as OmdbMovie;
-    if (parsed && typeof parsed === "object") return parsed;
-    return null;
-  } catch {
-    return null;
+
+  // Heuristic: if it looks like a short alphanumeric token (typical OMDb key), treat as live key, not mock JSON
+  // Real OMDb keys are usually short, e.g., "abcd1234". JSON will start with "{" typically.
+  const trimmed = raw.trim();
+  const looksLikeJson = trimmed.startsWith("{") && trimmed.endsWith("}");
+  const looksLikeQuotedJson =
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'));
+
+  // If wrapped in quotes, try to strip and parse
+  const tryParse = (val: string) => {
+    try {
+      const parsed = JSON.parse(val) as OmdbMovie;
+      if (parsed && typeof parsed === "object" && parsed.Title) return parsed;
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  if (looksLikeJson) {
+    return tryParse(trimmed);
   }
+
+  if (looksLikeQuotedJson) {
+    const unwrapped = trimmed.slice(1, -1);
+    // If user put quotes around a JSON string in .env, it may contain escaped quotes
+    const candidate = unwrapped.replace(/\\"/g, '"').replace(/\\n/g, "");
+    return tryParse(candidate);
+  }
+
+  // Not JSON-like; assume it's a real API key
+  return null;
 }
 
 /**

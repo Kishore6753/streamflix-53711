@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { fetchTrending, tmdbImage, TmdbMovie } from "@/lib/tmdb";
+import { fetchTrending, tmdbImage, TmdbMovie, TMDB_DEMO_FALLBACK } from "@/lib/tmdb";
 import { fetchOmdbByTitle, type OmdbMovie } from "@/lib/omdb";
 
 export default function Banner() {
@@ -15,18 +15,19 @@ export default function Banner() {
       try {
         // Load a trending item as the background context
         const data = await fetchTrending();
-        const choice = data.find((m) => m.backdrop_path) || data[0];
-        setFeatured(choice || null);
+        const candidate = (data && data.length > 0 ? data : [TMDB_DEMO_FALLBACK]);
+        const choice = candidate.find((m) => m.backdrop_path) || candidate[0] || TMDB_DEMO_FALLBACK;
+        setFeatured(choice);
 
-        // If there is a mock OMDb response available, prefer displaying its title/plot
-        if (choice) {
-          const title = choice.title || choice.name || "";
-          const omdbData = await fetchOmdbByTitle(title || "Guardians of the Galaxy Vol. 2");
-          setOmdb(omdbData);
-        }
+        // If OMDb mock/live available, try enrich by title (fall back to demo title)
+        const chosenTitle = choice.title || choice.name || "Guardians of the Galaxy Vol. 2";
+        const omdbData = await fetchOmdbByTitle(chosenTitle);
+        setOmdb(omdbData);
       } catch {
-        setFeatured(null);
-        setOmdb(null);
+        // Final fallback to demo
+        setFeatured(TMDB_DEMO_FALLBACK);
+        const omdbData = await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2");
+        setOmdb(omdbData);
       }
     })();
   }, []);
