@@ -13,17 +13,23 @@ export default function Banner() {
   useEffect(() => {
     (async () => {
       try {
+        console.debug("[Banner] mounted. Hydration check: window?", typeof window !== "undefined");
         // Load a trending item as the background context
         const data = await fetchTrending();
+        console.debug("[Banner] fetchTrending returned", Array.isArray(data) ? data.length : 0, "items");
         const candidate = (data && data.length > 0 ? data : [TMDB_DEMO_FALLBACK]);
         const choice = candidate.find((m) => m.backdrop_path) || candidate[0] || TMDB_DEMO_FALLBACK;
+        console.debug("[Banner] chosen TMDb item:", { id: choice.id, title: choice.title || choice.name, hasBackdrop: Boolean(choice.backdrop_path) });
         setFeatured(choice);
 
         // If OMDb mock/live available, try enrich by title (fall back to demo title)
         const chosenTitle = choice.title || choice.name || "Guardians of the Galaxy Vol. 2";
+        console.debug("[Banner] requesting OMDb by title:", chosenTitle);
         const omdbData = await fetchOmdbByTitle(chosenTitle);
+        console.debug("[Banner] OMDb result present?", Boolean(omdbData), "title:", omdbData?.Title);
         setOmdb(omdbData);
-      } catch {
+      } catch (e) {
+        console.warn("[Banner] error during load:", (e as Error)?.message);
         // Final fallback to demo
         setFeatured(TMDB_DEMO_FALLBACK);
         const omdbData = await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2");

@@ -5,6 +5,13 @@ import MovieRow from "@/components/MovieRow";
 import { fetchByCategory } from "@/lib/tmdb";
 
 export default function Home() {
+  if (typeof window !== "undefined") {
+    const raw = process.env.NEXT_PUBLIC_OMDB_API_KEY || "";
+    console.debug("[Home] Runtime env: NEXT_PUBLIC_OMDB_API_KEY length:", raw.length, "prefix:", raw.slice(0, 12));
+    const tmdb = process.env.NEXT_PUBLIC_TMDB_API_KEY || "";
+    console.debug("[Home] Runtime env: NEXT_PUBLIC_TMDB_API_KEY present?", Boolean(tmdb));
+  }
+
   return (
     <main className="min-h-screen">
       <Banner />

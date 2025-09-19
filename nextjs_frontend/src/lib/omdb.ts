@@ -39,39 +39,61 @@ const OMDB_BASE = "https://www.omdbapi.com/";
  */
 function getMockFromEnv(): OmdbMovie | null {
   const raw = process.env.NEXT_PUBLIC_OMDB_API_KEY;
-  if (!raw) return null;
+  if (!raw) {
+    if (typeof window !== "undefined") {
+      console.debug("[OMDb] NEXT_PUBLIC_OMDB_API_KEY is missing at runtime.");
+    }
+    return null;
+  }
 
-  // Heuristic: if it looks like a short alphanumeric token (typical OMDb key), treat as live key, not mock JSON
-  // Real OMDb keys are usually short, e.g., "abcd1234". JSON will start with "{" typically.
   const trimmed = raw.trim();
   const looksLikeJson = trimmed.startsWith("{") && trimmed.endsWith("}");
   const looksLikeQuotedJson =
     (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
     (trimmed.startsWith('"') && trimmed.endsWith('"'));
 
-  // If wrapped in quotes, try to strip and parse
   const tryParse = (val: string) => {
     try {
       const parsed = JSON.parse(val) as OmdbMovie;
-      if (parsed && typeof parsed === "object" && parsed.Title) return parsed;
+      if (parsed && typeof parsed === "object" && (parsed as OmdbMovie).Title) {
+        if (typeof window !== "undefined") {
+          console.debug("[OMDb] Using MOCK from env. Title:", parsed.Title, "Year:", parsed.Year);
+        }
+        return parsed;
+      }
       return null;
-    } catch {
+    } catch (e) {
+      if (typeof window !== "undefined") {
+        console.debug("[OMDb] Failed to parse MOCK JSON from env. Error:", (e as Error)?.message);
+      }
       return null;
     }
   };
 
   if (looksLikeJson) {
+    if (typeof window !== "undefined") {
+      console.debug("[OMDb] Env looks like raw JSON. Length:", trimmed.length);
+    }
     return tryParse(trimmed);
   }
 
   if (looksLikeQuotedJson) {
     const unwrapped = trimmed.slice(1, -1);
-    // If user put quotes around a JSON string in .env, it may contain escaped quotes
     const candidate = unwrapped.replace(/\\"/g, '"').replace(/\\n/g, "");
+    if (typeof window !== "undefined") {
+      console.debug("[OMDb] Env looks like quoted JSON. Unwrapped length:", candidate.length);
+    }
     return tryParse(candidate);
   }
 
-  // Not JSON-like; assume it's a real API key
+  if (typeof window !== "undefined") {
+    console.debug(
+      "[OMDb] Env looks like LIVE KEY. Length:",
+      trimmed.length,
+      "Sample prefix:",
+      trimmed.slice(0, 4)
+    );
+  }
   return null;
 }
 
@@ -83,27 +105,44 @@ function getMockFromEnv(): OmdbMovie | null {
  */
 export async function fetchOmdbById(imdbID: string): Promise<OmdbMovie | null> {
   /** This is a public function. */
-  // If env contains mock JSON, prefer it to demonstrate UI without live requests
   const mock = getMockFromEnv();
   if (mock) {
-    // If the mock has an imdbID and it doesn't match, still return it for demo purposes
+    if (typeof window !== "undefined") {
+      console.debug("[OMDb] fetchOmdbById using MOCK. imdbID requested:", imdbID);
+    }
     return mock;
   }
 
-  // Fallback to live API if an actual API key is provided in NEXT_PUBLIC_OMDB_API_KEY (not JSON)
   const key = process.env.NEXT_PUBLIC_OMDB_API_KEY || "";
   if (!key) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("OMDb key not set; returning null.");
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbById: OMDb key not set; returning null.");
     }
     return null;
   }
 
   const params = new URLSearchParams({ i: imdbID, apikey: key });
-  const res = await fetch(`${OMDB_BASE}?${params.toString()}`, { next: { revalidate: 300 } });
-  if (!res.ok) return null;
+  const url = `${OMDB_BASE}?${params.toString()}`;
+  if (typeof window !== "undefined") {
+    console.debug("[OMDb] fetchOmdbById LIVE request:", url.replace(key, "***"));
+  }
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) {
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbById response not ok:", res.status, res.statusText);
+    }
+    return null;
+  }
   const data = (await res.json()) as OmdbMovie;
-  if (data.Response === "False") return null;
+  if (data.Response === "False") {
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbById returned Response=False for", imdbID);
+    }
+    return null;
+  }
+  if (typeof window !== "undefined") {
+    console.debug("[OMDb] fetchOmdbById success. Title:", data.Title, "Year:", data.Year);
+  }
   return data;
 }
 
@@ -116,16 +155,43 @@ export async function fetchOmdbById(imdbID: string): Promise<OmdbMovie | null> {
 export async function fetchOmdbByTitle(title: string): Promise<OmdbMovie | null> {
   /** This is a public function. */
   const mock = getMockFromEnv();
-  if (mock) return mock;
+  if (mock) {
+    if (typeof window !== "undefined") {
+      console.debug("[OMDb] fetchOmdbByTitle using MOCK. Requested title:", title, "Mock.Title:", mock.Title);
+    }
+    return mock;
+  }
 
   const key = process.env.NEXT_PUBLIC_OMDB_API_KEY || "";
-  if (!key || !title) return null;
+  if (!key || !title) {
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbByTitle missing key or title. key?", Boolean(key), "title?", Boolean(title));
+    }
+    return null;
+  }
 
   const params = new URLSearchParams({ t: title, apikey: key });
-  const res = await fetch(`${OMDB_BASE}?${params.toString()}`, { next: { revalidate: 300 } });
-  if (!res.ok) return null;
+  const url = `${OMDB_BASE}?${params.toString()}`;
+  if (typeof window !== "undefined") {
+    console.debug("[OMDb] fetchOmdbByTitle LIVE request:", url.replace(key, "***"));
+  }
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) {
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbByTitle response not ok:", res.status, res.statusText);
+    }
+    return null;
+  }
   const data = (await res.json()) as OmdbMovie;
-  if (data.Response === "False") return null;
+  if (data.Response === "False") {
+    if (typeof window !== "undefined") {
+      console.warn("[OMDb] fetchOmdbByTitle returned Response=False for", title);
+    }
+    return null;
+  }
+  if (typeof window !== "undefined") {
+    console.debug("[OMDb] fetchOmdbByTitle success. Title:", data.Title, "Year:", data.Year);
+  }
   return data;
 }
 

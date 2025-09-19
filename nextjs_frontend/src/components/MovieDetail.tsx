@@ -17,26 +17,33 @@ export default function MovieDetail({ id }: { id: number }) {
   useEffect(() => {
     (async () => {
       try {
+        console.debug("[MovieDetail] mount with id:", id);
         // Fetch TMDb details + videos for trailer
         const { details, videos } = await fetchMovieDetails(id);
         const tmdbTitle = details.title || details.name || "Untitled";
+        console.debug("[MovieDetail] TMDb details:", { tmdbTitle, imdb_id: details.imdb_id, hasBackdrop: Boolean(details.backdrop_path) });
         setTitle(tmdbTitle);
         setOverview(details.overview || "");
         setBackdrop(details.backdrop_path || details.poster_path || null);
         const firstTrailer =
           videos.find((v) => v.site === "YouTube" && v.type.toLowerCase().includes("trailer")) || null;
+        console.debug("[MovieDetail] Trailer present?", Boolean(firstTrailer));
         setTrailer(firstTrailer);
 
         // Try OMDb: prefer imdbID if available, else use title
         let omdbData: OmdbMovie | null = null;
         if (details.imdb_id) {
+          console.debug("[MovieDetail] fetching OMDb by imdbID:", details.imdb_id);
           omdbData = await fetchOmdbById(details.imdb_id);
         }
         if (!omdbData) {
+          console.debug("[MovieDetail] fetching OMDb by title:", tmdbTitle);
           omdbData = await fetchOmdbByTitle(tmdbTitle);
         }
+        console.debug("[MovieDetail] OMDb present?", Boolean(omdbData), "title:", omdbData?.Title);
         setOmdb(omdbData);
-      } catch {
+      } catch (e) {
+        console.warn("[MovieDetail] error, using fallback OMDb title. Error:", (e as Error)?.message);
         // If TMDb failed entirely, try to rescue UI with OMDb mock using known demo title
         const omdbData = await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2");
         setOmdb(omdbData);

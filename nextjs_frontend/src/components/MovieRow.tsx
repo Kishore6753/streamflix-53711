@@ -12,8 +12,12 @@ export default function MovieRow({ title, fetcher }: { title: string; fetcher: (
     let mounted = true;
     (async () => {
       try {
+        console.debug("[MovieRow] start fetch:", title);
         const data = await fetcher();
+        console.debug("[MovieRow] fetched", Array.isArray(data) ? data.length : 0, "items for", title);
         if (mounted) setMovies(data);
+      } catch (e) {
+        console.warn("[MovieRow] fetch error for", title, (e as Error)?.message);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -21,7 +25,7 @@ export default function MovieRow({ title, fetcher }: { title: string; fetcher: (
     return () => {
       mounted = false;
     };
-  }, [fetcher]);
+  }, [fetcher, title]);
 
   return (
     <section className="container-px my-6">
