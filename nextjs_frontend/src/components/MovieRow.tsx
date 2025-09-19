@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TmdbMovie } from "@/lib/tmdb";
 import MovieCard from "./MovieCard";
+import { getOmdbMocks } from "@/lib/omdb";
 
 export default function MovieRow({ title, fetcher }: { title: string; fetcher: () => Promise<TmdbMovie[]> }) {
   const [movies, setMovies] = useState<TmdbMovie[]>([]);
@@ -15,7 +16,27 @@ export default function MovieRow({ title, fetcher }: { title: string; fetcher: (
         console.debug("[MovieRow] start fetch:", title);
         const data = await fetcher();
         console.debug("[MovieRow] fetched", Array.isArray(data) ? data.length : 0, "items for", title);
-        if (mounted) setMovies(data);
+
+        // If OMDb mocks are provided, map them to lightweight TMDb-like cards and append.
+        const mocks = getOmdbMocks();
+        let mockAsTmdb: TmdbMovie[] = [];
+        if (mocks.length > 0) {
+          mockAsTmdb = mocks.map((m, idx) => ({
+            id: 9000000 + idx, // synthetic id to avoid collision
+            title: m.Title,
+            overview: m.Plot || "",
+            poster_path: null, // we don't have TMDb poster; MovieCard uses next/image with TMDb paths, so leave null
+            backdrop_path: null,
+            vote_average: Number(m.imdbRating || "0") || 0,
+            name: undefined,
+            release_date: undefined,
+            first_air_date: undefined,
+          }));
+          console.debug("[MovieRow] appended OMDb mock items:", mockAsTmdb.length);
+        }
+
+        const combined = [...data, ...mockAsTmdb];
+        if (mounted) setMovies(combined);
       } catch (e) {
         console.warn("[MovieRow] fetch error for", title, (e as Error)?.message);
       } finally {

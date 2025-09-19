@@ -34,83 +34,108 @@ export type OmdbMovie = {
 const OMDB_BASE = "https://www.omdbapi.com/";
 
 /**
- * Attempt to parse the env var NEXT_PUBLIC_OMDB_API_KEY as a JSON string containing a sample OMDb response.
- * If parsing fails, return null.
+ * Try to parse a JSON string that may be raw or wrapped in quotes and with escaped quotes.
  */
-function getMockFromEnv(): OmdbMovie | null {
-  const raw = process.env.NEXT_PUBLIC_OMDB_API_KEY;
-  if (!raw) {
+function tryParseJson<T>(raw: string): T | null {
+  const trimmed = raw.trim();
+  const looksLikeQuoted =
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'));
+  const candidate = looksLikeQuoted ? trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, "") : trimmed;
+
+  try {
+    return JSON.parse(candidate) as T;
+  } catch (e) {
     if (typeof window !== "undefined") {
-      console.debug("[OMDb] NEXT_PUBLIC_OMDB_API_KEY is missing at runtime.");
+      console.debug("[OMDb] JSON parse failed:", (e as Error)?.message);
     }
     return null;
   }
+}
 
-  const trimmed = raw.trim();
-  const looksLikeJson = trimmed.startsWith("{") && trimmed.endsWith("}");
-  const looksLikeQuotedJson =
-    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
-    (trimmed.startsWith('"') && trimmed.endsWith('"'));
-
-  const tryParse = (val: string) => {
-    try {
-      const parsed = JSON.parse(val) as OmdbMovie;
-      if (parsed && typeof parsed === "object" && (parsed as OmdbMovie).Title) {
-        if (typeof window !== "undefined") {
-          console.debug("[OMDb] Using MOCK from env. Title:", parsed.Title, "Year:", parsed.Year);
-        }
-        return parsed;
-      }
-      return null;
-    } catch (e) {
+/**
+ * Parse multiple OMDb mock movies from env.
+ * Priority:
+ * 1) NEXT_PUBLIC_OMDB_MOCK_MOVIES if present as JSON array
+ * 2) If NEXT_PUBLIC_OMDB_API_KEY contains a JSON array, use that (backward compat)
+ * 3) If NEXT_PUBLIC_OMDB_API_KEY contains a single JSON object, return [object]
+ * Otherwise return [] meaning live mode or no mocks.
+ */
+function getMockArrayFromEnv(): OmdbMovie[] {
+  const multiRaw = process.env.NEXT_PUBLIC_OMDB_MOCK_MOVIES;
+  if (multiRaw) {
+    const parsed = tryParseJson<unknown>(multiRaw);
+    if (Array.isArray(parsed)) {
+      const movies = parsed.filter((m) => m && typeof m === "object") as OmdbMovie[];
       if (typeof window !== "undefined") {
-        console.debug("[OMDb] Failed to parse MOCK JSON from env. Error:", (e as Error)?.message);
+        console.debug("[OMDb] Using MULTI MOCK from NEXT_PUBLIC_OMDB_MOCK_MOVIES. Count:", movies.length);
       }
-      return null;
+      return movies;
     }
-  };
+  }
 
-  if (looksLikeJson) {
+  const keyRaw = process.env.NEXT_PUBLIC_OMDB_API_KEY;
+  if (!keyRaw) return [];
+
+  // If keyRaw is a JSON array, use it
+  const parsedKey = tryParseJson<unknown>(keyRaw);
+  if (Array.isArray(parsedKey)) {
+    const movies = parsedKey.filter((m) => m && typeof m === "object") as OmdbMovie[];
     if (typeof window !== "undefined") {
-      console.debug("[OMDb] Env looks like raw JSON. Length:", trimmed.length);
+      console.debug("[OMDb] Using MULTI MOCK from NEXT_PUBLIC_OMDB_API_KEY (array). Count:", movies.length);
     }
-    return tryParse(trimmed);
+    return movies;
   }
-
-  if (looksLikeQuotedJson) {
-    const unwrapped = trimmed.slice(1, -1);
-    const candidate = unwrapped.replace(/\\"/g, '"').replace(/\\n/g, "");
+  // If it is a single object, return as array (back-compat)
+  if (parsedKey && typeof parsedKey === "object" && (parsedKey as OmdbMovie).Title) {
     if (typeof window !== "undefined") {
-      console.debug("[OMDb] Env looks like quoted JSON. Unwrapped length:", candidate.length);
+      console.debug("[OMDb] Using SINGLE MOCK from NEXT_PUBLIC_OMDB_API_KEY (object).");
     }
-    return tryParse(candidate);
+    return [parsedKey as OmdbMovie];
   }
+  return [];
+}
 
-  if (typeof window !== "undefined") {
-    console.debug(
-      "[OMDb] Env looks like LIVE KEY. Length:",
-      trimmed.length,
-      "Sample prefix:",
-      trimmed.slice(0, 4)
-    );
-  }
-  return null;
+
+
+/**
+ * PUBLIC_INTERFACE
+ * getOmdbMocks
+ * Return all OMDb mock movies parsed from env (may be empty).
+ */
+export function getOmdbMocks(): OmdbMovie[] {
+  /** This is a public function. */
+  return getMockArrayFromEnv();
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * getRandomOmdbMock
+ * Returns a random OMDb mock movie if available; otherwise null.
+ */
+export function getRandomOmdbMock(): OmdbMovie | null {
+  /** This is a public function. */
+  const arr = getMockArrayFromEnv();
+  if (arr.length === 0) return null;
+  const idx = Math.floor(Math.random() * arr.length);
+  return arr[idx];
 }
 
 /**
  * PUBLIC_INTERFACE
  * fetchOmdbById
- * Fetch a movie by IMDb ID (imdbID). In mock mode, returns the parsed JSON from NEXT_PUBLIC_OMDB_API_KEY.
+ * Fetch a movie by IMDb ID (imdbID). In mock mode, returns the parsed JSON from env (first match by imdbID or any).
  * In live mode (if NEXT_PUBLIC_OMDB_API_KEY contains a real key), calls OMDb API with i=<id>.
  */
 export async function fetchOmdbById(imdbID: string): Promise<OmdbMovie | null> {
   /** This is a public function. */
-  const mock = getMockFromEnv();
-  if (mock) {
+  const mocks = getMockArrayFromEnv();
+  if (mocks.length > 0) {
+    const match = mocks.find((m) => m.imdbID === imdbID) || mocks[0];
     if (typeof window !== "undefined") {
-      console.debug("[OMDb] fetchOmdbById using MOCK. imdbID requested:", imdbID);
+      console.debug("[OMDb] fetchOmdbById using MOCK array. imdbID:", imdbID, "match:", match?.Title);
     }
-    return mock;
+    return match || null;
   }
 
   const key = process.env.NEXT_PUBLIC_OMDB_API_KEY || "";
@@ -149,17 +174,22 @@ export async function fetchOmdbById(imdbID: string): Promise<OmdbMovie | null> {
 /**
  * PUBLIC_INTERFACE
  * fetchOmdbByTitle
- * Fetch a movie by title. In mock mode, returns the parsed JSON from NEXT_PUBLIC_OMDB_API_KEY.
+ * Fetch a movie by title. In mock mode, returns a matching mock by Title (case-insensitive) or the first mock.
  * In live mode, calls OMDb API with t=<title>.
  */
 export async function fetchOmdbByTitle(title: string): Promise<OmdbMovie | null> {
   /** This is a public function. */
-  const mock = getMockFromEnv();
-  if (mock) {
+  const mocks = getMockArrayFromEnv();
+  if (mocks.length > 0) {
+    const t = (title || "").toLowerCase();
+    const match =
+      mocks.find((m) => (m.Title || "").toLowerCase() === t) ||
+      mocks.find((m) => (m.Title || "").toLowerCase().includes(t)) ||
+      mocks[0];
     if (typeof window !== "undefined") {
-      console.debug("[OMDb] fetchOmdbByTitle using MOCK. Requested title:", title, "Mock.Title:", mock.Title);
+      console.debug("[OMDb] fetchOmdbByTitle using MOCK array. requested:", title, "match:", match?.Title);
     }
-    return mock;
+    return match || null;
   }
 
   const key = process.env.NEXT_PUBLIC_OMDB_API_KEY || "";

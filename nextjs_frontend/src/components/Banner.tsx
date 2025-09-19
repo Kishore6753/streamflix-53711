@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchTrending, tmdbImage, TmdbMovie, TMDB_DEMO_FALLBACK } from "@/lib/tmdb";
-import { fetchOmdbByTitle, type OmdbMovie } from "@/lib/omdb";
+import { fetchOmdbByTitle, getRandomOmdbMock, type OmdbMovie } from "@/lib/omdb";
 
 export default function Banner() {
   const [featured, setFeatured] = useState<TmdbMovie | null>(null);
@@ -22,18 +22,23 @@ export default function Banner() {
         console.debug("[Banner] chosen TMDb item:", { id: choice.id, title: choice.title || choice.name, hasBackdrop: Boolean(choice.backdrop_path) });
         setFeatured(choice);
 
-        // If OMDb mock/live available, try enrich by title (fall back to demo title)
-        const chosenTitle = choice.title || choice.name || "Guardians of the Galaxy Vol. 2";
-        console.debug("[Banner] requesting OMDb by title:", chosenTitle);
-        const omdbData = await fetchOmdbByTitle(chosenTitle);
-        console.debug("[Banner] OMDb result present?", Boolean(omdbData), "title:", omdbData?.Title);
-        setOmdb(omdbData);
+        // Prefer a random OMDb mock if available; otherwise try live by the TMDb title
+        const mock = getRandomOmdbMock();
+        if (mock) {
+          setOmdb(mock);
+        } else {
+          const chosenTitle = choice.title || choice.name || "Guardians of the Galaxy Vol. 2";
+          console.debug("[Banner] requesting OMDb by title:", chosenTitle);
+          const omdbData = await fetchOmdbByTitle(chosenTitle);
+          console.debug("[Banner] OMDb result present?", Boolean(omdbData), "title:", omdbData?.Title);
+          setOmdb(omdbData);
+        }
       } catch (e) {
         console.warn("[Banner] error during load:", (e as Error)?.message);
         // Final fallback to demo
         setFeatured(TMDB_DEMO_FALLBACK);
-        const omdbData = await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2");
-        setOmdb(omdbData);
+        const fallback = getRandomOmdbMock() || (await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2"));
+        setOmdb(fallback);
       }
     })();
   }, []);

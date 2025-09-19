@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchMovieDetails, tmdbImage, TmdbVideo } from "@/lib/tmdb";
 import Image from "next/image";
 import VideoPlayer from "./VideoPlayer";
-import { fetchOmdbById, fetchOmdbByTitle, formatRatings, type OmdbMovie } from "@/lib/omdb";
+import { fetchOmdbById, fetchOmdbByTitle, formatRatings, getOmdbMocks, type OmdbMovie } from "@/lib/omdb";
 
 export default function MovieDetail({ id }: { id: number }) {
   const [loading, setLoading] = useState(true);
@@ -30,9 +30,20 @@ export default function MovieDetail({ id }: { id: number }) {
         console.debug("[MovieDetail] Trailer present?", Boolean(firstTrailer));
         setTrailer(firstTrailer);
 
-        // Try OMDb: prefer imdbID if available, else use title
+        // Prefer OMDb mock array if available: match by imdbID or by Title
+        const mocks = getOmdbMocks();
         let omdbData: OmdbMovie | null = null;
-        if (details.imdb_id) {
+        if (mocks.length > 0) {
+          omdbData =
+            (details.imdb_id ? mocks.find((m) => m.imdbID === details.imdb_id) : null) ||
+            mocks.find((m) => (m.Title || "").toLowerCase() === tmdbTitle.toLowerCase()) ||
+            null;
+          if (omdbData) {
+            console.debug("[MovieDetail] using OMDb mock from array:", omdbData.Title);
+          }
+        }
+        // Fallback to live or single mock helpers
+        if (!omdbData && details.imdb_id) {
           console.debug("[MovieDetail] fetching OMDb by imdbID:", details.imdb_id);
           omdbData = await fetchOmdbById(details.imdb_id);
         }
@@ -45,7 +56,8 @@ export default function MovieDetail({ id }: { id: number }) {
       } catch (e) {
         console.warn("[MovieDetail] error, using fallback OMDb title. Error:", (e as Error)?.message);
         // If TMDb failed entirely, try to rescue UI with OMDb mock using known demo title
-        const omdbData = await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2");
+        const mocks = getOmdbMocks();
+        const omdbData = mocks[0] || (await fetchOmdbByTitle("Guardians of the Galaxy Vol. 2"));
         setOmdb(omdbData);
         setTitle(omdbData?.Title || "Guardians of the Galaxy Vol. 2");
         setOverview(omdbData?.Plot || "");
@@ -119,6 +131,7 @@ export default function MovieDetail({ id }: { id: number }) {
             {posterSrc ? (
               <div className="mt-4">
                 {/* Next Image can optimize remote poster if allowed in next.config.ts. OMDb poster domain varies; fallback to img with native tag. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={posterSrc}
                   alt={omdb?.Title || title}
