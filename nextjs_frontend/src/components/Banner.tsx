@@ -4,23 +4,35 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { fetchTrending, tmdbImage, TmdbMovie } from "@/lib/tmdb";
+import { fetchOmdbByTitle, type OmdbMovie } from "@/lib/omdb";
 
 export default function Banner() {
   const [featured, setFeatured] = useState<TmdbMovie | null>(null);
+  const [omdb, setOmdb] = useState<OmdbMovie | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
+        // Load a trending item as the background context
         const data = await fetchTrending();
         const choice = data.find((m) => m.backdrop_path) || data[0];
         setFeatured(choice || null);
+
+        // If there is a mock OMDb response available, prefer displaying its title/plot
+        if (choice) {
+          const title = choice.title || choice.name || "";
+          const omdbData = await fetchOmdbByTitle(title || "Guardians of the Galaxy Vol. 2");
+          setOmdb(omdbData);
+        }
       } catch {
         setFeatured(null);
+        setOmdb(null);
       }
     })();
   }, []);
 
-  const title = useMemo(() => featured?.title || featured?.name || "Featured", [featured]);
+  const title = useMemo(() => omdb?.Title || featured?.title || featured?.name || "Featured", [featured, omdb]);
+  const plot = useMemo(() => omdb?.Plot || featured?.overview || "", [featured, omdb]);
 
   return (
     <section className="relative h-[46vh] w-full overflow-hidden rounded-b-3xl border-b border-blue-100/60">
@@ -37,7 +49,7 @@ export default function Banner() {
       <div className="relative container-px h-full flex flex-col justify-end pb-8 gap-3">
         <span className="badge bg-amber-100 text-amber-700 w-max">Featured</span>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow">{title}</h1>
-        <p className="max-w-2xl text-white/90 line-clamp-3">{featured?.overview}</p>
+        <p className="max-w-2xl text-white/90 line-clamp-3">{plot}</p>
         {featured && (
           <div className="mt-2 flex gap-3">
             <Link href={`/movie/${featured.id}`} className="btn btn-secondary shadow">Watch Trailer</Link>
