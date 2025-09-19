@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StreamFlix – Next.js + Supabase + TMDb
 
-## Getting Started
+Netflix-like web application built with Next.js App Router, Tailwind CSS, Supabase authentication (Google + Email), and TMDb for real movie data.
 
-First, run the development server:
+## Features
+- Modern Ocean Professional theme with blue/amber accents
+- Top navbar with search, auth actions, and watchlist
+- Featured banner hero and horizontal category rows
+- Movie details page with trailer playback (YouTube)
+- Supabase auth (Google OAuth, Email magic link)
+- Favorites/Watchlist stored in Supabase Postgres
+- Works on Vercel; image optimization for TMDb domains
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Prerequisites
+- Node.js 18+
+- Supabase project with anon/public key
+- TMDb API key (free)
+
+## Environment Setup
+Copy .env.example to .env.local and fill values:
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_KEY=...
+NEXT_PUBLIC_TMDB_API_KEY=...
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Supabase Schema
+Execute in Supabase SQL editor:
+```sql
+create table if not exists public.favorites (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  tmdb_id integer not null,
+  title text not null,
+  poster_path text,
+  created_at timestamp with time zone default now()
+);
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+create index if not exists favorites_user_id_idx on public.favorites(user_id);
+create unique index if not exists favorites_unique on public.favorites(user_id, tmdb_id);
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+alter table public.favorites enable row level security;
 
-## Learn More
+create policy "allow read own" on public.favorites
+  for select using (auth.uid() = user_id);
 
-To learn more about Next.js, take a look at the following resources:
+create policy "allow insert own" on public.favorites
+  for insert with check (auth.uid() = user_id);
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+create policy "allow delete own" on public.favorites
+  for delete using (auth.uid() = user_id);
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Enable Google OAuth in Supabase Dashboard and set redirect URL to:
+- http://localhost:3000
+- https://your-vercel-domain.vercel.app
 
-## Deploy on Vercel
+## Development
+Install deps and run:
+```
+npm install
+npm run dev
+```
+Open http://localhost:3000
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment (Vercel)
+- Import the project into Vercel
+- Set Environment Variables:
+  - NEXT_PUBLIC_SUPABASE_URL
+  - NEXT_PUBLIC_SUPABASE_KEY
+  - NEXT_PUBLIC_TMDB_API_KEY
+  - NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
+- Build command: `npm run build`
+- No special output config required; Next handles routing.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+- If TMDb key is missing, UI will render with placeholders and no data.
+- If Supabase env is missing, auth/watchlist actions are disabled gracefully.
+
+## Roadmap
+- AI-powered recommendations
+- Infinite scroll & more categories
+- Server Actions for favorites to reduce client-side logic
